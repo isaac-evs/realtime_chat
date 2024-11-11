@@ -1,45 +1,33 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import HTMLResponse
-from typing import List
-
-from sqlalchemy.sql import expression
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+import socketio
 
 # Initialize App
-app = FastAPI()
+fastapi_app = FastAPI()
 
-# Connection Manager for WebSocket connections
-class ConnectionManager:
-    def __init__(self):
-        self.activate_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.activate_connections.append(websocket)
-        print(f"Connection established: {websocket.client}")
-
-    def disconnect(self, websocket: WebSocket):
-        self.activate_connections.remove(websocket)
-        print(f"Connection closed: {websocket.client}")
-
-    async def broadcast(self, message: str):
-        for connection in self.activate_connections:
-            await connection.send_text(message)
-
-
-# WebSocket Endpoint
-manager = ConnectionManager()
-
-@app.websocket("/ws/chat")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await manager.broadcast(f"Client Says: {data}")
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+# Files directory
+fastapi_app.mount("/static", StaticFiles(directory="static"), name= "static")
 
 # Serve HTML
-@app.get("/")
-async def get(request: Request):
-    return HTMLResponse(open("index.html").read())
+@fastapi_app.get("/")
+async def get():
+    return FileResponse('static/index.html')
+
+# Socket.IO instance
+sio = socketio.AsyncServer(async_mode = 'asgi')
+app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
+
+# Events
+@sio.event
+async def connect(sid, environ):
+    print('Client connected', sid)
+
+@sio.event
+async def disconnect(sid):
+    print('Client disconnected', sid)
+
+@sio.event
+async def message(sid, data):
+    print(f'Message from {sid}: {data}')
+    await sio.emit('message', data)

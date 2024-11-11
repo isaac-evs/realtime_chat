@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+    <head>
+        <title>FastAPI Socket.IO Chat</title>
+    </head>
+    <body>
+        <h1>Real-Time Chat</h1>
+        <ul id="messages"></ul>
+        <input
+            id="message_input"
+            autocomplete="off"
+            placeholder="Type your message..."
+        />
+        <button id="send_button">Send</button>
+
+        <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+        <script>
+            // Socket.IO server
+            var socket = io();
+
+            // Connect
+            socket.on("connect", function () {
+                console.log("Connected to server");
+            });
+
+            // Incoming messages
+            socket.on("message", function (data) {
+                var messages = document.getElementById("messages");
+                var li = document.createElement("li");
+                li.textContent = data;
+                messages.appendChild(li);
+            });
+
+            // Send messages
+            document.getElementById("send_button").onclick = function () {
+                var input = document.getElementById("message_input");
+                var message = input.value;
+                if (message) {
+                    socket.emit("message", message);
+                    input.value = "";
+                }
+            };
+        </script>
+    </body>
+</html>
