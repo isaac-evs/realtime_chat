@@ -18,16 +18,27 @@ async def get():
 sio = socketio.AsyncServer(async_mode = 'asgi')
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 
+
 # Events
+
+users = {}
+
 @sio.event
 async def connect(sid, environ):
     print('Client connected', sid)
 
 @sio.event
+async def join(sid, username):
+    users[sid] = username
+    await sio.emit('message', f"{username} has joined the chat.")
+
+@sio.event
 async def disconnect(sid):
-    print('Client disconnected', sid)
+    username = users.get(sid, 'Unknown')
+    await sio.emit('message', f"{username} has left the chat.")
+    users.pop(sid, None)
 
 @sio.event
 async def message(sid, data):
-    print(f'Message from {sid}: {data}')
-    await sio.emit('message', data)
+    username = users.get(sid, 'Anonymous')
+    await sio.emit('message', f"{username}: {data}")
