@@ -2,82 +2,219 @@
 <html>
     <head>
         <title>FastAPI Socket.IO Chat</title>
+        <link
+            rel="stylesheet"
+            href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+        />
+        <!-- Custom CSS -->
+        <style>
+            body {
+                background-color: #f7f7f7;
+            }
+            #chat_interface {
+                margin-top: 20px;
+            }
+            #messages {
+                height: 400px;
+                overflow-y: scroll;
+                padding: 15px;
+                background-color: #fff;
+            }
+            .message {
+                margin-bottom: 10px;
+                display: flex;
+                flex-direction: column;
+            }
+            .message .content {
+                max-width: 60%;
+                padding: 10px;
+                border-radius: 15px;
+            }
+            .message.me .content {
+                background-color: #dcf8c6;
+                align-self: flex-end;
+            }
+            .message.other .content {
+                background-color: #ececec;
+                align-self: flex-start;
+            }
+            .message .meta {
+                font-size: 0.8em;
+                color: #666;
+                margin-top: 5px;
+            }
+            #message_input {
+                width: 100%;
+                padding: 10px;
+                margin-top: 10px;
+            }
+            #send_button {
+                width: 100%;
+            }
+            #room_selection {
+                margin-top: 20px;
+            }
+        </style>
     </head>
     <body>
-        <!-- Register form -->
-        <h2>Register</h2>
-        <input id="reg_username" placeholder="Username" />
-        <input id="reg_password" type="password" placeholder="Password" />
-        <button id="register_button">Register</button>
+        <div class="container">
+            <div id="auth_forms" class="mt-5">
+                <!-- Register form -->
+                <form id="register_form">
+                    <h2>Register</h2>
+                    <input id="reg_username" placeholder="Username" />
+                    <input
+                        id="reg_password"
+                        type="password"
+                        placeholder="Password"
+                    />
+                    <button id="register_button">Register</button>
+                </form>
 
-        <!-- Login form -->
-        <h2>Login</h2>
-        <input id="login_username" placeholder="Username" />
-        <input id="login_password" type="password" placeholder="Password" />
-        <button id="login_button">Login</button>
+                <!-- Login form -->
+                <form id="login_form">
+                    <h2>Login</h2>
+                    <input id="login_username" placeholder="Username" />
+                    <input
+                        id="login_password"
+                        type="password"
+                        placeholder="Password"
+                    />
+                    <button id="login_button">Login</button>
+                </form>
+            </div>
 
-        <!-- Chat Interface -->
-        <div id="chat_interface" style="display: none">
-            <h1>Real-Time Chat</h1>
-            <ul id="messages"></ul>
-            <input
-                id="message_input"
-                autocomplete="off"
-                placeholder="Type your message..."
-            />
-            <button id="send_button">Send</button>
+            <!-- Room Selection -->
+            <div id="room_selection" style="display: none">
+                <h2>Select a Chat Room</h2>
+                <div id="rooms_list" class="list-group"></div>
+            </div>
+
+            <!-- Chat Interface -->
+            <div id="chat_interface" style="display: none">
+                <h1 class="text-center">Real-Time Chat</h1>
+                <div id="messages"></div>
+                <div class="input-group mt-3">
+                    <input
+                        id="message_input"
+                        type="text"
+                        class="form-control"
+                        autocomplete="off"
+                        placeholder="Type your message..."
+                    />
+                    <div class="input-group-append">
+                        <button
+                            id="send_button"
+                            class="btn btn-primary"
+                            type="button"
+                        >
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
         <script>
             let socket;
             let token;
+            let currentUser;
+            let currentRoom;
 
-            // Register
-            document.getElementById("register_button").onclick =
-                async function () {
-                    const username =
-                        document.getElementById("reg_username").value;
-                    const password =
-                        document.getElementById("reg_password").value;
-                    const response = await fetch("/register", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ username, password }),
-                    });
-                    const data = await response.json();
+            // Registration Event Handler
+            document.getElementById("register_form").onsubmit = async function (
+                e,
+            ) {
+                e.preventDefault(); // Prevent form submission
+                const username = document.getElementById("reg_username").value;
+                const password = document.getElementById("reg_password").value;
+                const response = await fetch("/register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password }),
+                });
+                const data = await response.json();
+                if (response.ok) {
                     alert(data.msg);
-                };
+                    document.getElementById("register_form").reset();
+                } else {
+                    alert(data.detail);
+                }
+            };
 
-            // Login
-            document.getElementById("login_button").onclick =
-                async function () {
-                    const username =
-                        document.getElementById("login_username").value;
-                    const password =
-                        document.getElementById("login_password").value;
-                    const formData = new URLSearchParams();
-                    formData.append("username", username);
-                    formData.append("password", password);
-                    const response = await fetch("/token", {
-                        method: "POST",
-                        body: formData,
-                    });
-                    const result = await response.json();
-                    if (response.ok) {
-                        token = result.access_token;
-                        document.getElementById(
-                            "chat_interface",
-                        ).style.display = "block";
-                        await loadMessages();
-                        connectSocket();
-                    } else {
-                        alert("Login failed");
-                    }
-                };
+            // Login Event Handler
+            document.getElementById("login_form").onsubmit = async function (
+                e,
+            ) {
+                e.preventDefault(); // Prevent form submission
+                const username =
+                    document.getElementById("login_username").value;
+                const password =
+                    document.getElementById("login_password").value;
+                const formData = new URLSearchParams();
+                formData.append("username", username);
+                formData.append("password", password);
+                const response = await fetch("/token", {
+                    method: "POST",
+                    body: formData,
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    token = result.access_token;
+                    afterLogin(username);
+                } else {
+                    alert("Login failed");
+                }
+            };
 
-            async function loadMessages() {
-                const response = await fetch("/messages", {
+            // After successful login
+            async function afterLogin(username) {
+                currentUser = username;
+                document.getElementById("auth_forms").style.display = "none";
+                document.getElementById("room_selection").style.display =
+                    "block";
+                await loadRooms();
+            }
+
+            // Load Rooms
+            async function loadRooms() {
+                const response = await fetch("/rooms", {
+                    headers: {
+                        Authorization: "Bearer " + token,
+                    },
+                });
+                const rooms = await response.json();
+                const roomsList = document.getElementById("rooms_list");
+                roomsList.innerHTML = "";
+                rooms.forEach((room) => {
+                    const roomItem = document.createElement("button");
+                    roomItem.classList.add(
+                        "list-group-item",
+                        "list-group-item-action",
+                    );
+                    roomItem.textContent = room;
+                    roomItem.onclick = () => joinRoom(room);
+                    roomsList.appendChild(roomItem);
+                });
+            }
+
+            // Join Room
+            async function joinRoom(room) {
+                currentRoom = room;
+                document.getElementById("room_selection").style.display =
+                    "none";
+                document.getElementById("chat_interface").style.display =
+                    "block";
+                document.querySelector("#chat_interface h1").textContent =
+                    `Room: ${room}`;
+                await loadMessages(room);
+                connectSocket();
+            }
+
+            // Load Messages for the Room
+            async function loadMessages(room) {
+                const response = await fetch(`/messages/${room}`, {
                     headers: {
                         Authorization: "Bearer " + token,
                     },
@@ -86,14 +223,12 @@
                 const messages = document.getElementById("messages");
                 messages.innerHTML = "";
                 messagesData.forEach((msg) => {
-                    const li = document.createElement("li");
-                    li.textContent = `${msg.username}: ${msg.content}`;
-                    messages.appendChild(li);
+                    addMessage(msg, msg.username === currentUser);
                 });
+                messages.scrollTop = messages.scrollHeight;
             }
 
             // Connect to Socket.IO
-
             function connectSocket() {
                 socket = io({
                     auth: {
@@ -104,25 +239,84 @@
                 // Connect
                 socket.on("connect", function () {
                     console.log("Connected to server");
+                    socket.emit("join_room", currentRoom);
                 });
 
                 // Incoming messages
                 socket.on("message", function (data) {
-                    const messages = document.getElementById("messages");
-                    const li = document.createElement("li");
-                    li.textContent = data;
-                    messages.appendChild(li);
+                    const isMe = data.username === currentUser;
+                    addMessage(data, isMe);
+                });
+
+                // Notifications
+                socket.on("notification", function (message) {
+                    addNotification(message);
+                });
+
+                // Handle message history
+                socket.on("message_history", function (messages) {
+                    const messagesContainer =
+                        document.getElementById("messages");
+                    messagesContainer.innerHTML = ""; // Clear any existing messages
+                    messages.forEach((msg) => {
+                        addMessage(msg, msg.username === currentUser);
+                    });
+                    messagesContainer.scrollTop =
+                        messagesContainer.scrollHeight;
                 });
 
                 // Send messages
                 document.getElementById("send_button").onclick = function () {
                     const input = document.getElementById("message_input");
-                    const message = input.value;
+                    const message = input.value.trim();
                     if (message) {
                         socket.emit("message", message);
                         input.value = "";
                     }
                 };
+
+                // Send message on Enter key press
+                document
+                    .getElementById("message_input")
+                    .addEventListener("keyup", function (event) {
+                        if (event.key === "Enter") {
+                            document.getElementById("send_button").click();
+                        }
+                    });
+            }
+
+            // Add Message to Chat
+            function addMessage(data, isMe) {
+                const messages = document.getElementById("messages");
+                const messageDiv = document.createElement("div");
+                messageDiv.classList.add("message", isMe ? "me" : "other");
+
+                const contentDiv = document.createElement("div");
+                contentDiv.classList.add("content");
+                contentDiv.textContent = data.content;
+
+                const metaDiv = document.createElement("div");
+                metaDiv.classList.add("meta");
+                metaDiv.textContent = `${data.username} • ${data.timestamp}`;
+
+                messageDiv.appendChild(contentDiv);
+                messageDiv.appendChild(metaDiv);
+                messages.appendChild(messageDiv);
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            // Add Notification to Chat
+            function addNotification(message) {
+                const messages = document.getElementById("messages");
+                const notificationDiv = document.createElement("div");
+                notificationDiv.classList.add(
+                    "text-center",
+                    "text-muted",
+                    "my-2",
+                );
+                notificationDiv.textContent = message;
+                messages.appendChild(notificationDiv);
+                messages.scrollTop = messages.scrollHeight;
             }
         </script>
     </body>

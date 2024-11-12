@@ -103,11 +103,20 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         raise credentials_exception
 
 # Get Last Messages
-@fastapi_app.get("/messages")
-async def get_messages(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    messages = db.query(Message).order_by(Message.timestamp.desc()).limit(50).all()
-    messages.reverse()
-    return [{"username": msg.sender.username, "content": msg.content, "timestamp": msg.timestamp} for msg in messages]
+@fastapi_app.get("/messages/{room}")
+async def get_messages(room: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    messages = db.query(Message).filter(Message.room == room).order_by(Message.timestamp.asc()).all()
+    return [{
+        "username": msg.sender.username,
+        "content": msg.content,
+        "timestamp": msg.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+    } for msg in messages]
+
+ROOMS = ["General", "Technology", "Sports", "Entertainment"]
+
+@fastapi_app.get("/rooms")
+async def get_rooms():
+    return ROOMS
 
 #### Views ####
 
@@ -145,7 +154,7 @@ async def connect(sid, environ, auth):
         user = get_user(db, username)
         if user is None:
             return False
-        connected_users[sid] = user
+        connected_users[sid] = {'user': user, 'room': None}
         print(f"User {username} connected with session ID {sid}")
     except JWTError:
         return False
@@ -154,26 +163,62 @@ async def connect(sid, environ, auth):
 # Disconnect
 @sio.event
 async def disconnect(sid):
-    user = connected_users.pop(sid, None)
-    if user:
-        await sio.emit('message', f"{user.username} has left the chat.")
-        print(f"User {user.username} disconnected.")
+    user_info = connected_users.pop(sid, None)
+    if user_info:
+        room = user_info["room"]
+        username = user_info["user"].username
+        await sio.emit('notification', f"{username} has left the dialog", room = room)
+        print(f"User {username} disconnected.")
 
 # Message
 @sio.event
 async def message(sid, data):
-    user = connected_users.get(sid)
-    if user:
+    user_info = connected_users.get(sid)
+    if user_info:
+        user = user_info["user"]
+        room = user_info["room"]
+        timestamp = datetime.utcnow()
+        message_data = {
+                   'username': user.username,
+                   'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                   'content': data
+               }
+
         db = SessionLocal()
-        new_message = Message(content=data, sender_id = user.id)
+        new_message = Message(content=data, sender_id=user.id, room=room, timestamp=timestamp)
         db.add(new_message)
         db.commit()
         db.refresh(new_message)
-        db.close
-        await sio.emit('message', f"{user.username}: {data}")
+        db.close()
+        await sio.emit('message', message_data, room=room)
 
 # Join
 @sio.event
-async def join(sid, username):
-    connected_users[sid] = username
-    await sio.emit('message', f"{username} has joined the chat.")
+async def join_room(sid, room):
+    user_info = connected_users.get(sid)
+    if user_info:
+        await sio.enter_room(sid, room)  # Add the user to the room
+        user_info['room'] = room
+        username = user_info['user'].username
+
+        # Notify other users in the room
+        await sio.emit('notification', f"{username} has joined the conversation", room=room)
+
+        # Retrieve the last 50 messages from this room (for example)
+        db = SessionLocal()
+        messages = db.query(Message).filter(Message.room == room).order_by(Message.timestamp.asc()).limit(50).all()
+
+        # Format messages for frontend
+        message_history = [
+            {
+                "username": msg.sender.username,
+                "content": msg.content,
+                "timestamp": msg.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            for msg in messages
+        ]
+        db.close()
+
+        # Send message history to the user who just joined
+        await sio.emit('message_history', message_history, to=sid)
+        print(f"User {username} joined room {room}")
