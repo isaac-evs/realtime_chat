@@ -113,25 +113,54 @@ async def get():
 sio = socketio.AsyncServer(async_mode = 'asgi')
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 
-# Events
-users = {}
+# Dictionary of connected Users
+connected_users = {}
 
+# Connect
 @sio.event
-async def connect(sid, environ):
-    print('Client connected', sid)
+async def connect(sid, environ, auth):
+    token = auth.get('token', None)
+    if token is None:
+        return False
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            return False
 
-@sio.event
-async def join(sid, username):
-    users[sid] = username
-    await sio.emit('message', f"{username} has joined the chat.")
+        db = SessionLocal()
+        user = get_user(db, username)
+        if user is None:
+            return False
+        connected_users[sid] = user
+        print(f"User {username} connected with session ID {sid}")
+    except JWTError:
+        return False
 
+
+# Disconnect
 @sio.event
 async def disconnect(sid):
-    username = users.get(sid, 'Unknown')
-    await sio.emit('message', f"{username} has left the chat.")
-    users.pop(sid, None)
+    user = connected_users.pop(sid, None)
+    if user:
+        await sio.emit('message', f"{user.username} has left the chat.")
+        print(f"User {user.username} disconnected.")
 
+# Message
 @sio.event
 async def message(sid, data):
-    username = users.get(sid, 'Anonymous')
-    await sio.emit('message', f"{username}: {data}")
+    user = connected_users.get(sid)
+    if user:
+        db = SessionLocal()
+        new_message = Message(content=data, sender_id = user.id)
+        db.add(new_message)
+        db.commit()
+        db.refresh(new_message)
+        db.close
+        await sio.emit('message', f"{user.username}: {data}")
+
+# Join
+@sio.event
+async def join(sid, username):
+    connected_users[sid] = username
+    await sio.emit('message', f"{username} has joined the chat.")
