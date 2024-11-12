@@ -4,57 +4,126 @@
         <title>FastAPI Socket.IO Chat</title>
     </head>
     <body>
-        <h1>Real-Time Chat</h1>
+        <!-- Register form -->
+        <h2>Register</h2>
+        <input id="reg_username" placeholder="Username" />
+        <input id="reg_password" type="password" placeholder="Password" />
+        <button id="register_button">Register</button>
 
-        <!-- Username input -->
-        <input
-            id="username_input"
-            autocomplete="off"
-            placeholder="Enter your username..."
-        />
+        <!-- Login form -->
+        <h2>Login</h2>
+        <input id="login_username" placeholder="Username" />
+        <input id="login_password" type="password" placeholder="Password" />
+        <button id="login_button">Login</button>
 
-        <!-- Messages input -->
-        <ul id="messages"></ul>
-        <input
-            id="message_input"
-            autocomplete="off"
-            placeholder="Type your message..."
-        />
-        <button id="send_button">Send</button>
+        <!-- Chat Interface -->
+        <div id="chat_interface" style="display: none">
+            <h1>Real-Time Chat</h1>
+            <ul id="messages"></ul>
+            <input
+                id="message_input"
+                autocomplete="off"
+                placeholder="Type your message..."
+            />
+            <button id="send_button">Send</button>
+        </div>
 
         <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
         <script>
-            // Socket.IO server
-            var socket = io();
+            let socket;
+            let token;
 
-            // Connect
-            socket.on("connect", function () {
-                console.log("Connected to server");
-            });
+            // Register
+            document.getElementById("register_button").onclick =
+                async function () {
+                    const username =
+                        document.getElementById("reg_username").value;
+                    const password =
+                        document.getElementById("reg_password").value;
+                    const response = await fetch("/register", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ username, password }),
+                    });
+                    const data = await response.json();
+                    alert(data.msg);
+                };
 
-            // Username input
-            document.getElementById("username_input").onchange = function () {
-                var username = this.value;
-                socket.emit("join", username);
-            };
+            // Login
+            document.getElementById("login_button").onclick =
+                async function () {
+                    const username =
+                        document.getElementById("login_username").value;
+                    const password =
+                        document.getElementById("login_password").value;
+                    const formData = new URLSearchParams();
+                    formData.append("username", username);
+                    formData.append("password", password);
+                    const response = await fetch("/token", {
+                        method: "POST",
+                        body: formData,
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        token = result.access_token;
+                        document.getElementById(
+                            "chat_interface",
+                        ).style.display = "block";
+                        await loadMessages();
+                        connectSocket();
+                    } else {
+                        alert("Login failed");
+                    }
+                };
 
-            // Incoming messages
-            socket.on("message", function (data) {
-                var messages = document.getElementById("messages");
-                var li = document.createElement("li");
-                li.textContent = data;
-                messages.appendChild(li);
-            });
+            async function loadMessages() {
+                const response = await fetch("/messages", {
+                    headers: {
+                        Authorization: "Bearer " + token,
+                    },
+                });
+                const messagesData = await response.json();
+                const messages = document.getElementById("messages");
+                messages.innerHTML = "";
+                messagesData.forEach((msg) => {
+                    const li = document.createElement("li");
+                    li.textContent = `${msg.username}: ${msg.content}`;
+                    messages.appendChild(li);
+                });
+            }
 
-            // Send messages
-            document.getElementById("send_button").onclick = function () {
-                var input = document.getElementById("message_input");
-                var message = input.value;
-                if (message) {
-                    socket.emit("message", message);
-                    input.value = "";
-                }
-            };
+            // Connect to Socket.IO
+
+            function connectSocket() {
+                socket = io({
+                    auth: {
+                        token: token,
+                    },
+                });
+
+                // Connect
+                socket.on("connect", function () {
+                    console.log("Connected to server");
+                });
+
+                // Incoming messages
+                socket.on("message", function (data) {
+                    const messages = document.getElementById("messages");
+                    const li = document.createElement("li");
+                    li.textContent = data;
+                    messages.appendChild(li);
+                });
+
+                // Send messages
+                document.getElementById("send_button").onclick = function () {
+                    const input = document.getElementById("message_input");
+                    const message = input.value;
+                    if (message) {
+                        socket.emit("message", message);
+                        input.value = "";
+                    }
+                };
+            }
         </script>
     </body>
 </html>

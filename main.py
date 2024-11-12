@@ -1,10 +1,8 @@
-from enum import verify
-from engineio.packet import NOOP
 from fastapi import FastAPI, Depends, HTTPException, status
-import fastapi
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.models import OAuth2
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, oauth2
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import socketio
 from sqlalchemy.orm import Session
@@ -14,6 +12,7 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
+from pydantic import BaseModel
 
 #### App ####
 
@@ -28,6 +27,11 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Pydantic Model
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
 
 #### Authentication ####
 
@@ -70,16 +74,18 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 # Register route
 @fastapi_app.post("/register")
-async def register_user(username: str, password: str, db:Session = Depends(get_db)):
+async def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
+    username = request.username
+    password = request.password
     user = get_user(db, username)
     if user:
         raise HTTPException(status_code=400, detail="Username already registered")
     hashed_password = get_password_hash(password)
-    new_user = User(username = username, password = hashed_password)
+    new_user = User(username=username, password=hashed_password)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return {"msg": "User created succesfully" }
+    return {"msg": "User created successfully"}
 
 # Current User
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -95,6 +101,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         return user
     except JWTError:
         raise credentials_exception
+
+# Get Last Messages
+@fastapi_app.get("/messages")
+async def get_messages(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    messages = db.query(Message).order_by(Message.timestamp.desc()).limit(50).all()
+    messages.reverse()
+    return [{"username": msg.sender.username, "content": msg.content, "timestamp": msg.timestamp} for msg in messages]
 
 #### Views ####
 
