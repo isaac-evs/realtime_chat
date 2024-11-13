@@ -1,9 +1,7 @@
-#!/usr/bin/env bash
-
-# start.sh
+# start.sh alternative
 
 # Run migrations (if using Alembic)
 # alembic upgrade head
 
-# Start the application
-exec gunicorn main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 4
+# Start the application with uvicorn
+exec uvicorn main:app --host 0.0.0.0 --port $PORT --workers 4
