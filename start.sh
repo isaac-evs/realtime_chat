@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-
-exec gunicorn main:app \
+exec gunicorn main:fastapi_app \
     --worker-class uvicorn.workers.UvicornWorker \
     --bind 0.0.0.0:$PORT \
     --workers 4 \

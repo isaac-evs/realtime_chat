@@ -37,7 +37,7 @@ class RegisterRequest(BaseModel):
 #### Authentication ####
 
 # JWT config and Password Hashing
-SECRET_KEY = os.getenv("SECRET_KEY", "20022BA")
+SECRET_KEY = os.getenv("SECRET_KEY", "20022")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
