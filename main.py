@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -221,3 +223,9 @@ async def join_room(sid, room):
         # Send message history to the user who just joined
         await sio.emit('message_history', message_history, to=sid)
         print(f"User {username} joined room {room}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
