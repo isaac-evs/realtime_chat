@@ -18,7 +18,7 @@ from pydantic import BaseModel
 #### App ####
 
 # Initialize App
-fastapi_app = FastAPI()
+app = FastAPI()  # Changed from fastapi_app to app
 
 #### Database ####
 
@@ -65,7 +65,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # Login route
-@fastapi_app.post("/token")
+@app.post("/token")  # Changed from fastapi_app to app
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = get_user(db, form_data.username)
     if not user or not verify_password(form_data.password, user.password):
@@ -74,7 +74,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer"}
 
 # Register route
-@fastapi_app.post("/register")
+@app.post("/register")  # Changed from fastapi_app to app
 async def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     username = request.username
     password = request.password
@@ -104,7 +104,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         raise credentials_exception
 
 # Get Last Messages
-@fastapi_app.get("/messages/{room}")
+@app.get("/messages/{room}")  # Changed from fastapi_app to app
 async def get_messages(room: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     messages = db.query(Message).filter(Message.room == room).order_by(Message.timestamp.asc()).all()
     return [{
@@ -115,17 +115,17 @@ async def get_messages(room: str, db: Session = Depends(get_db), current_user: U
 
 ROOMS = ["General", "Technology", "Sports", "Entertainment"]
 
-@fastapi_app.get("/rooms")
+@app.get("/rooms")  # Changed from fastapi_app to app
 async def get_rooms():
     return ROOMS
 
 #### Views ####
 
 # Files directory
-fastapi_app.mount("/static", StaticFiles(directory="static"), name= "static")
+app.mount("/static", StaticFiles(directory="static"), name="static")  # Changed from fastapi_app to app
 
 # Serve HTML
-@fastapi_app.get("/")
+@app.get("/")  # Changed from fastapi_app to app
 async def get():
     return FileResponse('static/index.html')
 
@@ -133,8 +133,8 @@ async def get():
 #### Socket.IO ####
 
 # Socket.IO instance
-sio = socketio.AsyncServer(async_mode = 'asgi')
-app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')  # Added cors_allowed_origins
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)  # Changed from fastapi_app to app
 
 # Dictionary of connected Users
 connected_users = {}
@@ -168,7 +168,7 @@ async def disconnect(sid):
     if user_info:
         room = user_info["room"]
         username = user_info["user"].username
-        await sio.emit('notification', f"{username} has left the dialog", room = room)
+        await sio.emit('notification', f"{username} has left the dialog", room=room)
         print(f"User {username} disconnected.")
 
 # Message
@@ -180,10 +180,10 @@ async def message(sid, data):
         room = user_info["room"]
         timestamp = datetime.utcnow()
         message_data = {
-                   'username': user.username,
-                   'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-                   'content': data
-               }
+            'username': user.username,
+            'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'content': data
+        }
 
         db = SessionLocal()
         new_message = Message(content=data, sender_id=user.id, room=room, timestamp=timestamp)
@@ -198,18 +198,15 @@ async def message(sid, data):
 async def join_room(sid, room):
     user_info = connected_users.get(sid)
     if user_info:
-        await sio.enter_room(sid, room)  # Add the user to the room
+        await sio.enter_room(sid, room)
         user_info['room'] = room
         username = user_info['user'].username
 
-        # Notify other users in the room
         await sio.emit('notification', f"{username} has joined the conversation", room=room)
 
-        # Retrieve the last 50 messages from this room (for example)
         db = SessionLocal()
         messages = db.query(Message).filter(Message.room == room).order_by(Message.timestamp.asc()).limit(50).all()
 
-        # Format messages for frontend
         message_history = [
             {
                 "username": msg.sender.username,
@@ -220,10 +217,12 @@ async def join_room(sid, room):
         ]
         db.close()
 
-        # Send message history to the user who just joined
         await sio.emit('message_history', message_history, to=sid)
         print(f"User {username} joined room {room}")
 
+
+# Export the socket app as the main application
+app = socket_app  # This makes the socket_app the main ASGI application
 
 if __name__ == "__main__":
     import uvicorn
