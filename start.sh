@@ -1,13 +1,7 @@
 #!/bin/bash
 
-# Create virtual environment if it doesn't exist
-python3 -m venv venv
-
 # Activate virtual environment
 source venv/bin/activate
-
-# Install requirements
-pip install -r requirements.txt
 
 # Start the application
 exec venv/bin/gunicorn main:app \
