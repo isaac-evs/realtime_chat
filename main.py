@@ -220,9 +220,7 @@ async def join_room(sid, room):
         await sio.emit('message_history', message_history, to=sid)
         print(f"User {username} joined room {room}")
 
-
-# Export the socket app as the main application
-app = socket_app  # This makes the socket_app the main ASGI application
+app = socket_app
 
 if __name__ == "__main__":
     import uvicorn
