@@ -1,9 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.openapi.models import OAuth2
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, oauth2
-from fastapi.staticfiles import StaticFiles
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import socketio
 from sqlalchemy.orm import Session
 from database import SessionLocal
@@ -13,6 +11,7 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
 from pydantic import BaseModel
+
 
 #### App ####
 
